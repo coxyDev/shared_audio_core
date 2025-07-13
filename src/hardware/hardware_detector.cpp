@@ -1,4 +1,5 @@
-﻿#include <portaudio.h>
+﻿#include "hardware/hardware_detector.h"
+#include <portaudio.h>
 #include <string>
 #include <algorithm>
 #include <iostream>
@@ -197,17 +198,6 @@ namespace SharedAudio {
         }
     }
 
-    // Test hardware capabilities
-    struct HardwareCapabilities {
-        HardwareType type;
-        std::string name;
-        double min_latency_ms;
-        int max_sample_rate;
-        int max_channels;
-        bool supports_exclusive_mode;
-        bool supports_low_latency;
-    };
-
     HardwareCapabilities get_hardware_capabilities(HardwareType type) {
         HardwareCapabilities caps;
         caps.type = type;
@@ -216,52 +206,115 @@ namespace SharedAudio {
 
         switch (type) {
         case HardwareType::UAD_APOLLO:
+            caps.manufacturer = "Universal Audio";
+            caps.typical_latency_ms = 2.3;
             caps.max_sample_rate = 192000;
-            caps.max_channels = 32;
+            caps.max_input_channels = 32;
+            caps.max_output_channels = 32;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
+            caps.supported_buffer_sizes = { 32, 64, 128, 256, 512, 1024 };
             break;
+
         case HardwareType::ALLEN_HEATH_AVANTIS:
+            caps.manufacturer = "Allen & Heath";
+            caps.typical_latency_ms = 2.8;
             caps.max_sample_rate = 96000;
-            caps.max_channels = 64;
+            caps.max_input_channels = 64;
+            caps.max_output_channels = 64;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 44100, 48000, 96000 };
+            caps.supported_buffer_sizes = { 64, 128, 256, 512 };
             break;
+
         case HardwareType::DIGICO_SD9:
+            caps.manufacturer = "DiGiCo";
+            caps.typical_latency_ms = 2.5;
             caps.max_sample_rate = 96000;
-            caps.max_channels = 128;
+            caps.max_input_channels = 128;
+            caps.max_output_channels = 128;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 48000, 96000 };
+            caps.supported_buffer_sizes = { 64, 128, 256 };
             break;
+
         case HardwareType::RME_FIREFACE:
+            caps.manufacturer = "RME";
+            caps.typical_latency_ms = 2.2;
             caps.max_sample_rate = 192000;
-            caps.max_channels = 24;
+            caps.max_input_channels = 24;
+            caps.max_output_channels = 24;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
+            caps.supported_buffer_sizes = { 32, 64, 128, 256, 512, 1024 };
             break;
+
         case HardwareType::YAMAHA_CL5:
+            caps.manufacturer = "Yamaha";
+            caps.typical_latency_ms = 3.0;
             caps.max_sample_rate = 96000;
-            caps.max_channels = 72;
+            caps.max_input_channels = 72;
+            caps.max_output_channels = 72;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 44100, 48000, 96000 };
+            caps.supported_buffer_sizes = { 128, 256, 512 };
             break;
+
         case HardwareType::BEHRINGER_X32:
+            caps.manufacturer = "Behringer";
+            caps.typical_latency_ms = 3.5;
             caps.max_sample_rate = 48000;
-            caps.max_channels = 32;
+            caps.max_input_channels = 32;
+            caps.max_output_channels = 32;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 44100, 48000 };
+            caps.supported_buffer_sizes = { 128, 256, 512, 1024 };
             break;
+
         case HardwareType::FOCUSRITE_SCARLETT:
+            caps.manufacturer = "Focusrite";
+            caps.typical_latency_ms = 4.0;
             caps.max_sample_rate = 192000;
-            caps.max_channels = 8;
+            caps.max_input_channels = 8;
+            caps.max_output_channels = 8;
             caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
+            caps.supports_asio = true;
+            caps.supports_professional_routing = false;
+            caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
+            caps.supported_buffer_sizes = { 64, 128, 256, 512, 1024 };
             break;
+
         default:
+            caps.manufacturer = "Unknown";
+            caps.typical_latency_ms = 12.0;
             caps.max_sample_rate = 48000;
-            caps.max_channels = 2;
+            caps.max_input_channels = 2;
+            caps.max_output_channels = 2;
             caps.supports_exclusive_mode = false;
             caps.supports_low_latency = false;
+            caps.supports_asio = false;
+            caps.supports_professional_routing = false;
+            caps.supported_sample_rates = { 44100, 48000 };
+            caps.supported_buffer_sizes = { 256, 512, 1024, 2048 };
             break;
         }
 
@@ -304,4 +357,55 @@ namespace SharedAudio {
         return settings;
     }
 
-}
+    AudioSettings get_recommended_settings(HardwareType type, bool prioritize_latency) {
+        AudioSettings settings = optimize_settings_for_hardware(type);
+
+        if (!prioritize_latency) {
+            // Prioritize stability over latency
+            settings.buffer_size *= 2;
+            settings.target_latency_ms *= 1.5;
+        }
+
+        return settings;
+    }
+
+    // Professional hardware profiles
+    namespace HardwareProfiles {
+        AudioSettings get_broadcast_profile(HardwareType type) {
+            AudioSettings settings = optimize_settings_for_hardware(type);
+            settings.sample_rate = 48000;  // Broadcast standard
+            settings.buffer_size = 256;    // Stability over latency
+            return settings;
+        }
+
+        AudioSettings get_live_sound_profile(HardwareType type) {
+            AudioSettings settings = optimize_settings_for_hardware(type);
+            // Use optimized settings as-is for live sound
+            return settings;
+        }
+
+        AudioSettings get_recording_profile(HardwareType type) {
+            AudioSettings settings = optimize_settings_for_hardware(type);
+            if (settings.sample_rate < 96000) {
+                settings.sample_rate = 96000;  // High quality for recording
+            }
+            settings.buffer_size = 512;    // Larger buffer for stability
+            return settings;
+        }
+
+        AudioSettings get_post_production_profile(HardwareType type) {
+            AudioSettings settings = optimize_settings_for_hardware(type);
+            settings.sample_rate = 96000;  // High quality
+            settings.buffer_size = 1024;   // Large buffer for complex processing
+            return settings;
+        }
+
+        AudioSettings get_gaming_profile(HardwareType type) {
+            AudioSettings settings = optimize_settings_for_hardware(type);
+            settings.buffer_size = std::min(settings.buffer_size, 128);  // Minimal latency
+            settings.target_latency_ms = std::min(settings.target_latency_ms, 5.0);
+            return settings;
+        }
+    }
+
+} // namespace SharedAudio

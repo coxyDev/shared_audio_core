@@ -1,6 +1,5 @@
 #include "shared_audio/shared_audio_core.h"
 #include "hardware/hardware_detector.h"
-#include "processing/audio_processor.h"
 #include "show_control/cue_audio_manager.h"
 #include "show_control/crossfade_engine.h"
 
@@ -8,6 +7,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <algorithm>
 
 namespace SharedAudio {
 

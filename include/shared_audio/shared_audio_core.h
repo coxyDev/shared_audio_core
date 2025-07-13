@@ -4,13 +4,10 @@
 #include <vector>
 #include <string>
 #include <functional>
-#include <map>
 
 namespace SharedAudio {
 
     // Forward declarations
-    class AudioDeviceManager;
-    class AudioProcessor;
     class CueAudioManager;
     class CrossfadeEngine;
 
@@ -122,6 +119,5 @@ namespace SharedAudio {
 
     // Factory functions
     std::unique_ptr<SharedAudioCore> create_audio_core();
-    std::unique_ptr<AudioProcessor> create_test_processor(bool generate_tone = false);
 
 } // namespace SharedAudio

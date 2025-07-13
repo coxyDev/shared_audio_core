@@ -73,27 +73,27 @@ set(CORE_SOURCES
 )
 
 # Platform-specific sources
-if(PLATFORM_WINDOWS)
-    list(APPEND CORE_SOURCES
-        src/platform/windows/asio_driver_manager.cpp
-    )
-elseif(PLATFORM_MACOS)
-    list(APPEND CORE_SOURCES
-        src/platform/macos/core_audio_interface.cpp
-    )
-elseif(PLATFORM_LINUX)
-    list(APPEND CORE_SOURCES
-        src/platform/linux/alsa_interface.cpp
-    )
-endif()
+#if(PLATFORM_WINDOWS)
+ #   list(APPEND CORE_SOURCES
+  #      src/platform/windows/asio_driver_manager.cpp
+   # )
+#elseif(PLATFORM_MACOS)
+ #   list(APPEND CORE_SOURCES
+  #      src/platform/macos/core_audio_interface.cpp
+   # )
+#elseif(PLATFORM_LINUX)
+ #   list(APPEND CORE_SOURCES
+  #      src/platform/linux/alsa_interface.cpp
+   # )
+#endif()
 
 # JUCE integration sources
-if(BUILD_JUCE_INTEGRATION AND HAS_JUCE)
-    list(APPEND CORE_SOURCES
-        src/juce_integration/juce_audio_bridge.cpp
-        src/juce_integration/juce_effects_processor.cpp
-    )
-endif()
+#if(BUILD_JUCE_INTEGRATION AND HAS_JUCE)
+ #   list(APPEND CORE_SOURCES
+  #      src/juce_integration/juce_audio_bridge.cpp
+   #     src/juce_integration/juce_effects_processor.cpp
+    #)
+#endif()
 
 # Create shared library
 add_library(SharedAudioCore SHARED ${CORE_SOURCES})
