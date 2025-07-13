@@ -1,4 +1,4 @@
-#include "shared_audio/shared_audio_core.h"
+﻿#include "shared_audio/shared_audio_core.h"
 #include "hardware/hardware_detector.h"
 #include "show_control/cue_audio_manager.h"
 #include "show_control/crossfade_engine.h"
@@ -340,7 +340,7 @@ namespace SharedAudio {
     }
 
     std::vector<AudioDeviceInfo> SharedAudioCore::get_available_devices() {
-        return impl_->get_available_devices();
+        return ::SharedAudio::get_available_devices(); 
     }
 
     AudioDeviceInfo SharedAudioCore::get_current_device() const {
@@ -366,7 +366,7 @@ namespace SharedAudio {
     }
 
     std::vector<HardwareType> SharedAudioCore::detect_professional_hardware() const {
-        return detect_professional_hardware();
+        return ::SharedAudio::detect_professional_hardware();
     }
 
     bool SharedAudioCore::is_professional_hardware_available() const {
@@ -419,44 +419,6 @@ namespace SharedAudio {
         default:
             return false;
         }
-    }
-
-    std::vector<AudioDeviceInfo> SharedAudioCore::get_available_devices() {
-        return ::SharedAudio::get_available_devices();
-    }
-
-    bool SharedAudioCore::set_audio_device(const std::string& device_name) {
-        // TODO: Implement device switching
-        return true; // Placeholder
-    }
-
-    AudioDeviceInfo SharedAudioCore::get_current_device() const {
-        // TODO: Implement current device retrieval
-        AudioDeviceInfo device;
-        device.name = "Default Device";
-        device.driver_name = "Default";
-        device.hardware_type = HardwareType::GENERIC_ASIO;
-        device.max_input_channels = 2;
-        device.max_output_channels = 2;
-        device.is_default_input = true;
-        device.is_default_output = true;
-        device.supports_asio = false;
-        device.min_latency_ms = 10.0;
-        device.supported_sample_rates = { 44100, 48000 };
-        device.supported_buffer_sizes = { 256, 512, 1024 };
-        return device;
-    }
-
-    std::vector<HardwareType> SharedAudioCore::detect_professional_hardware() const {
-        return ::SharedAudio::detect_professional_hardware();
-    }
-
-    bool SharedAudioCore::is_professional_hardware_available() const {
-        return ::SharedAudio::is_professional_hardware_available();
-    }
-
-    HardwareCapabilities SharedAudioCore::get_hardware_capabilities(HardwareType type) const {
-        return ::SharedAudio::get_hardware_capabilities(type);
     }
 
     // Factory function

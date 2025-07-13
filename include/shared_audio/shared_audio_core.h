@@ -113,9 +113,6 @@ namespace SharedAudio {
         std::vector<HardwareType> detect_professional_hardware() const;
         bool is_professional_hardware_available() const;
         HardwareCapabilities get_hardware_capabilities(HardwareType type) const;
-        std::vector<AudioDeviceInfo> get_available_devices();
-        AudioDeviceInfo get_current_device() const;
-        bool set_audio_device(const std::string& device_name);
 
         // Error handling
         std::string get_last_error() const;
