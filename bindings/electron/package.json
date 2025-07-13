@@ -1,0 +1,16 @@
+{
+  "name": "shared-audio-core-node",
+  "version": "1.0.0",
+  "description": "Node.js bindings for SharedAudioCore",
+  "main": "index.js",
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "clean": "node-gyp clean"
+  },
+  "dependencies": {
+    "node-addon-api": "^5.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^9.0.0"
+  }
+}

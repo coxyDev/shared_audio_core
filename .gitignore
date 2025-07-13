@@ -1,0 +1,469 @@
+# SharedAudioCore .gitignore
+# Professional Audio Library with Node.js Bindings
+
+# =============================================================================
+# BUILD ARTIFACTS
+# =============================================================================
+
+# CMake build directories
+build/
+builds/
+cmake-build-*/
+out/
+
+# CMake cache and generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# =============================================================================
+# PLATFORM-SPECIFIC BUILD ARTIFACTS
+# =============================================================================
+
+# Windows
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.obj
+*.vcxproj.user
+*.vcxproj.filters
+*.sln.docstates
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+Debug/
+Release/
+x64/
+x86/
+Win32/
+.vs/
+
+# macOS
+*.dylib
+*.dSYM/
+*.app/
+.DS_Store
+.AppleDouble
+.LSOverride
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace/
+
+# Linux
+*.so
+*.so.*
+*.a
+*.o
+*.lo
+*.la
+*.al
+.libs/
+.deps/
+.dirstamp
+
+# =============================================================================
+# NODE.JS / ELECTRON BINDINGS
+# =============================================================================
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output/
+
+# Grunt intermediate storage
+.grunt/
+
+# Bower dependency directory
+bower_components/
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+bindings/electron/build/
+bindings/electron/node_modules/
+*.node
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript v1 declaration files
+typings/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm/
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache
+.cache/
+.parcel-cache/
+
+# Next.js build output
+.next/
+
+# Nuxt.js build / generate output
+.nuxt/
+dist/
+
+# Gatsby files
+.cache/
+public/
+
+# Storybook build outputs
+.out/
+.storybook-out/
+
+# Temporary folders
+tmp/
+temp/
+
+# =============================================================================
+# AUDIO-SPECIFIC FILES
+# =============================================================================
+
+# Test audio files (these can be large)
+*.wav
+*.aiff
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.wma
+*.aac
+test_audio/
+audio_samples/
+test_samples/
+
+# Audio plugin files
+*.vst
+*.vst3
+*.au
+*.component
+*.aaxplugin
+
+# Audio session files
+*.session
+*.aup
+*.aup3
+*.logic
+*.ptx
+*.ses
+
+# =============================================================================
+# IDE AND EDITOR FILES
+# =============================================================================
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.swp
+*.swo
+*~
+
+# Vim
+*.swp
+*.swo
+*.swn
+*.tmp
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# =============================================================================
+# SYSTEM FILES
+# =============================================================================
+
+# Thumbnails
+._*
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# =============================================================================
+# PACKAGE MANAGERS
+# =============================================================================
+
+# vcpkg
+vcpkg_installed/
+.vcpkg-root
+
+# Conan
+conandata.yml
+conanfile.txt
+conanbuildinfo.*
+conan.lock
+
+# =============================================================================
+# TESTING AND PROFILING
+# =============================================================================
+
+# Test results
+test_results/
+test_output/
+Testing/
+CTestTestfile.cmake
+Testing/
+
+# Performance profiling
+*.prof
+*.profile
+gmon.out
+callgrind.out.*
+*.trace
+*.vtune
+
+# Memory debugging
+*.dmp
+*.mdmp
+valgrind_*.log
+
+# Code coverage
+*.gcov
+*.gcda
+*.gcno
+*.info
+coverage.xml
+coverage.json
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+
+# Generated documentation
+docs/html/
+docs/latex/
+docs/xml/
+docs/_build/
+docs/.doctrees/
+
+# Doxygen output
+doxygen_output/
+html/
+latex/
+
+# =============================================================================
+# LOGS AND TEMPORARY FILES
+# =============================================================================
+
+# Log files
+*.log
+*.log.*
+logs/
+
+# Runtime files
+*.pid
+*.lock
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*_temp
+*_tmp
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# =============================================================================
+# AUDIO DEVELOPMENT SPECIFIC
+# =============================================================================
+
+# JUCE generated files
+JuceLibraryCode/
+Builds/
+
+# Audio driver development
+*.inf
+*.cat
+*.sys
+
+# ASIO SDK (if downloaded)
+ASIOSDK*/
+
+# VST SDK (if downloaded)
+VST*SDK*/
+vst*sdk*/
+
+# Plugin development
+*.exp
+*.def
+
+# Real-time audio debugging
+rtaudio_debug/
+latency_tests/
+
+# Performance benchmarks
+benchmarks/results/
+performance_data/
+
+# =============================================================================
+# CUSTOM IGNORES FOR THIS PROJECT
+# =============================================================================
+
+# Local configuration files
+local_config.json
+local_settings.ini
+user_preferences.xml
+
+# Development scripts
+scripts/local/
+scripts/private/
+
+# Hardware-specific calibration data
+calibration/
+hardware_profiles/
+
+# Third-party dependencies (if not using package managers)
+third_party/
+external/
+vendor/
+
+# Packaging
+packages/
+installers/
+releases/
+
+# =============================================================================
+# KEEP THESE FILES (explicit includes)
+# =============================================================================
+
+# Keep essential configuration files
+!CMakeLists.txt
+!package.json
+!binding.gyp
+!.clang-format
+!.clang-tidy
+
+# Keep example audio files (small ones only)
+!examples/**/*.wav
+examples/**/*_large.wav
+examples/**/*_test_long.wav
+
+# Keep documentation
+!README.md
+!LICENSE
+!CHANGELOG.md
+!docs/*.md
+
+# Keep CI/CD configuration
+!.github/
+!.gitlab-ci.yml
+!.travis.yml
+!appveyor.yml
+
+# Keep VS Code settings for the project
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
