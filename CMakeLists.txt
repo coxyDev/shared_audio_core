@@ -64,7 +64,7 @@ endif()
 include_directories(include)
 include_directories(${PORTAUDIO_INCLUDE_DIRS})
 
-# Source files
+# Core source files (only include files that actually exist)
 set(CORE_SOURCES
     src/core/shared_audio_core.cpp
     src/hardware/hardware_detector.cpp
@@ -72,28 +72,30 @@ set(CORE_SOURCES
     src/show_control/crossfade_engine.cpp
 )
 
-# Platform-specific sources
+# Platform-specific sources (commented out until implemented)
+# TODO: Add these files as they are implemented
 #if(PLATFORM_WINDOWS)
- #   list(APPEND CORE_SOURCES
-  #      src/platform/windows/asio_driver_manager.cpp
-   # )
+#    list(APPEND CORE_SOURCES
+#        src/platform/windows/asio_driver_manager.cpp
+#    )
 #elseif(PLATFORM_MACOS)
- #   list(APPEND CORE_SOURCES
-  #      src/platform/macos/core_audio_interface.cpp
-   # )
+#    list(APPEND CORE_SOURCES
+#        src/platform/macos/core_audio_interface.cpp
+#    )
 #elseif(PLATFORM_LINUX)
- #   list(APPEND CORE_SOURCES
-  #      src/platform/linux/alsa_interface.cpp
-   # )
+#    list(APPEND CORE_SOURCES
+#        src/platform/linux/alsa_interface.cpp
+#        src/platform/linux/pulse_interface.cpp
+#    )
 #endif()
 
-# JUCE integration sources
-#if(BUILD_JUCE_INTEGRATION AND HAS_JUCE)
- #   list(APPEND CORE_SOURCES
-  #      src/juce_integration/juce_audio_bridge.cpp
-   #     src/juce_integration/juce_effects_processor.cpp
-    #)
-#endif()
+# JUCE integration sources (when available)
+if(BUILD_JUCE_INTEGRATION AND HAS_JUCE)
+    list(APPEND CORE_SOURCES
+        src/juce_integration/juce_audio_bridge.cpp
+        src/juce_integration/juce_effects_processor.cpp
+    )
+endif()
 
 # Create shared library
 add_library(SharedAudioCore SHARED ${CORE_SOURCES})
@@ -107,8 +109,8 @@ target_link_libraries(SharedAudioCore
 if(PLATFORM_WINDOWS)
     target_link_libraries(SharedAudioCore
         winmm
+        dsound
         ole32
-        advapi32
         user32
     )
 elseif(PLATFORM_MACOS)
@@ -166,23 +168,20 @@ install(TARGETS SharedAudioCore
 
 install(DIRECTORY include/ DESTINATION include)
 
-# Status messages
+# Status information
 message(STATUS "==========================================")
-message(STATUS "      SHARED AUDIO CORE BUILD CONFIG")
+message(STATUS "SharedAudioCore Build Configuration")
 message(STATUS "==========================================")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Platform: ${CMAKE_SYSTEM_NAME}")
-message(STATUS "")
-message(STATUS "Options:")
-message(STATUS "  BUILD_TESTS: ${BUILD_TESTS}")
-message(STATUS "  BUILD_EXAMPLES: ${BUILD_EXAMPLES}")
-message(STATUS "  BUILD_ELECTRON_BINDING: ${BUILD_ELECTRON_BINDING}")
-message(STATUS "  BUILD_JUCE_INTEGRATION: ${BUILD_JUCE_INTEGRATION}")
-message(STATUS "")
-message(STATUS "Dependencies:")
-message(STATUS "  PortAudio: ${PORTAUDIO_LIBRARIES}")
-if(HAS_JUCE)
-    message(STATUS "  JUCE: Found")
-endif()
+message(STATUS "PortAudio Found: ${PORTAUDIO_FOUND}")
+message(STATUS "JUCE Integration: ${BUILD_JUCE_INTEGRATION}")
+message(STATUS "Build Examples: ${BUILD_EXAMPLES}")
+message(STATUS "Build Tests: ${BUILD_TESTS}")
+message(STATUS "Build Electron Binding: ${BUILD_ELECTRON_BINDING}")
+message(STATUS "==========================================")
+
+# Warning about missing optional files
+message(STATUS "Note: Some optional platform-specific files are not yet implemented")
+message(STATUS "The library will build with core functionality only")
 message(STATUS "==========================================")

@@ -3,409 +3,228 @@
 #include <string>
 #include <algorithm>
 #include <iostream>
-
-#ifdef _WIN32
-#include <windows.h>
-#include <combaseapi.h>
-#endif
+#include <regex>
 
 namespace SharedAudio {
 
     std::vector<HardwareType> detect_professional_hardware() {
         std::vector<HardwareType> detected;
 
-        std::cout << "Detecting professional audio hardware..." << std::endl;
+        std::cout << "🔍 Detecting professional audio hardware..." << std::endl;
 
-        // Initialize PortAudio temporarily for device detection
-        PaError err = Pa_Initialize();
-        if (err != paNoError) {
-            std::cout << "Error initializing PortAudio for hardware detection" << std::endl;
-            return detected;
+        // Initialize PortAudio if not already done
+        static bool pa_initialized = false;
+        if (!pa_initialized) {
+            if (Pa_Initialize() != paNoError) {
+                std::cout << "❌ Error initializing PortAudio for hardware detection" << std::endl;
+                return detected;
+            }
+            pa_initialized = true;
         }
 
         int device_count = Pa_GetDeviceCount();
         if (device_count < 0) {
-            std::cout << "Error getting device count" << std::endl;
-            Pa_Terminate();
+            std::cout << "❌ Error getting device count" << std::endl;
             return detected;
         }
-
-        bool found_professional = false;
 
         for (int i = 0; i < device_count; ++i) {
             const PaDeviceInfo* device_info = Pa_GetDeviceInfo(i);
             if (!device_info) continue;
 
             std::string device_name = device_info->name;
-            std::string lower_name = device_name;
-            std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+            HardwareType type = detect_hardware_type(device_name);
 
-            HardwareType detected_type = HardwareType::UNKNOWN;
-
-            // Check for specific professional hardware
-            if (lower_name.find("apollo") != std::string::npos) {
-                detected_type = HardwareType::UAD_APOLLO;
-                std::cout << "✅ Found UAD Apollo: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("avantis") != std::string::npos) {
-                detected_type = HardwareType::ALLEN_HEATH_AVANTIS;
-                std::cout << "✅ Found Allen & Heath Avantis: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("digico") != std::string::npos || lower_name.find("sd9") != std::string::npos) {
-                detected_type = HardwareType::DIGICO_SD9;
-                std::cout << "✅ Found DiGiCo SD9: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("yamaha") != std::string::npos || lower_name.find("cl5") != std::string::npos) {
-                detected_type = HardwareType::YAMAHA_CL5;
-                std::cout << "✅ Found Yamaha CL5: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("x32") != std::string::npos || lower_name.find("behringer") != std::string::npos) {
-                detected_type = HardwareType::BEHRINGER_X32;
-                std::cout << "✅ Found Behringer X32: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("rme") != std::string::npos || lower_name.find("fireface") != std::string::npos) {
-                detected_type = HardwareType::RME_FIREFACE;
-                std::cout << "✅ Found RME Fireface: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("focusrite") != std::string::npos || lower_name.find("scarlett") != std::string::npos) {
-                detected_type = HardwareType::FOCUSRITE_SCARLETT;
-                std::cout << "✅ Found Focusrite Scarlett: " << device_name << std::endl;
-                found_professional = true;
-            }
-            else if (lower_name.find("asio") != std::string::npos) {
-                detected_type = HardwareType::GENERIC_ASIO;
-                std::cout << "✅ Found Generic ASIO: " << device_name << std::endl;
-            }
-
-            // Add to detected list if it's professional hardware
-            if (detected_type != HardwareType::UNKNOWN) {
-                // Avoid duplicates
-                if (std::find(detected.begin(), detected.end(), detected_type) == detected.end()) {
-                    detected.push_back(detected_type);
-                }
+            if (type != HardwareType::UNKNOWN) {
+                detected.push_back(type);
+                std::cout << "✅ Found: " << hardware_type_to_string(type)
+                    << " (" << device_name << ")" << std::endl;
             }
         }
 
-        // Windows-specific ASIO detection
-#ifdef _WIN32
-        detect_windows_asio_hardware(detected);
-#endif
-
-        Pa_Terminate();
-
-        if (!found_professional && detected.empty()) {
-            std::cout << "⚠️  No professional audio hardware detected" << std::endl;
-            std::cout << "   Using system default audio device" << std::endl;
-            detected.push_back(HardwareType::UNKNOWN);
+        if (detected.empty()) {
+            std::cout << "⚠️  No professional hardware detected - using generic audio" << std::endl;
+            detected.push_back(HardwareType::GENERIC_ASIO);
         }
 
         return detected;
     }
 
-#ifdef _WIN32
-    void detect_windows_asio_hardware(std::vector<HardwareType>& detected) {
-        // Check Windows Registry for ASIO drivers
-        HKEY hKey;
-        LONG result = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-            "SOFTWARE\\ASIO",
-            0,
-            KEY_READ,
-            &hKey);
+    std::vector<AudioDeviceInfo> get_available_devices() {
+        std::vector<AudioDeviceInfo> devices;
 
-        if (result == ERROR_SUCCESS) {
-            std::cout << "🔍 Checking Windows Registry for ASIO drivers..." << std::endl;
-
-            DWORD index = 0;
-            char subKeyName[256];
-            DWORD subKeyLength = sizeof(subKeyName);
-
-            while (RegEnumKeyExA(hKey, index++, subKeyName, &subKeyLength,
-                NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-
-                std::string driverName = subKeyName;
-                std::string lowerName = driverName;
-                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-
-                HardwareType type = HardwareType::UNKNOWN;
-
-                if (lowerName.find("apollo") != std::string::npos) {
-                    type = HardwareType::UAD_APOLLO;
-                }
-                else if (lowerName.find("rme") != std::string::npos) {
-                    type = HardwareType::RME_FIREFACE;
-                }
-                else if (lowerName.find("focusrite") != std::string::npos) {
-                    type = HardwareType::FOCUSRITE_SCARLETT;
-                }
-                else {
-                    type = HardwareType::GENERIC_ASIO;
-                }
-
-                if (type != HardwareType::UNKNOWN &&
-                    std::find(detected.begin(), detected.end(), type) == detected.end()) {
-                    detected.push_back(type);
-                    std::cout << "✅ Found ASIO Driver: " << driverName << std::endl;
-                }
-
-                subKeyLength = sizeof(subKeyName);
+        // Initialize PortAudio if needed
+        static bool pa_initialized = false;
+        if (!pa_initialized) {
+            if (Pa_Initialize() != paNoError) {
+                return devices;
             }
-
-            RegCloseKey(hKey);
+            pa_initialized = true;
         }
+
+        int device_count = Pa_GetDeviceCount();
+        for (int i = 0; i < device_count; ++i) {
+            const PaDeviceInfo* pa_info = Pa_GetDeviceInfo(i);
+            if (!pa_info) continue;
+
+            AudioDeviceInfo device;
+            device.name = pa_info->name;
+            device.driver_name = Pa_GetHostApiInfo(pa_info->hostApi)->name;
+            device.hardware_type = detect_hardware_type(device.name);
+            device.max_input_channels = pa_info->maxInputChannels;
+            device.max_output_channels = pa_info->maxOutputChannels;
+            device.is_default_input = (i == Pa_GetDefaultInputDevice());
+            device.is_default_output = (i == Pa_GetDefaultOutputDevice());
+            device.supports_asio = (std::string(device.driver_name).find("ASIO") != std::string::npos);
+            device.min_latency_ms = pa_info->defaultLowOutputLatency * 1000.0;
+
+            // Add common sample rates
+            device.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
+            device.supported_buffer_sizes = { 64, 128, 256, 512, 1024, 2048 };
+
+            devices.push_back(device);
+        }
+
+        return devices;
     }
-#endif
 
-    bool is_hardware_asio_capable(const std::string& device_name) {
-        std::string lower_name = device_name;
-        std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+    HardwareType detect_hardware_type(const std::string& device_name) {
+        std::string name_lower = device_name;
+        std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
 
-        return lower_name.find("asio") != std::string::npos ||
-            lower_name.find("apollo") != std::string::npos ||
-            lower_name.find("rme") != std::string::npos ||
-            lower_name.find("focusrite") != std::string::npos ||
-            lower_name.find("avantis") != std::string::npos ||
-            lower_name.find("digico") != std::string::npos ||
-            lower_name.find("yamaha") != std::string::npos ||
-            lower_name.find("behringer") != std::string::npos;
+        // UAD Apollo series
+        if (name_lower.find("apollo") != std::string::npos ||
+            name_lower.find("uad") != std::string::npos) {
+            return HardwareType::UAD_APOLLO;
+        }
+
+        // Allen & Heath Avantis
+        if (name_lower.find("avantis") != std::string::npos ||
+            name_lower.find("allen") != std::string::npos) {
+            return HardwareType::ALLEN_HEATH_AVANTIS;
+        }
+
+        // DiGiCo SD9
+        if (name_lower.find("digico") != std::string::npos ||
+            name_lower.find("sd9") != std::string::npos) {
+            return HardwareType::DIGICO_SD9;
+        }
+
+        // Yamaha CL5
+        if (name_lower.find("yamaha") != std::string::npos ||
+            name_lower.find("cl5") != std::string::npos) {
+            return HardwareType::YAMAHA_CL5;
+        }
+
+        // Behringer X32
+        if (name_lower.find("x32") != std::string::npos ||
+            name_lower.find("behringer") != std::string::npos) {
+            return HardwareType::BEHRINGER_X32;
+        }
+
+        // RME Fireface
+        if (name_lower.find("fireface") != std::string::npos ||
+            name_lower.find("rme") != std::string::npos) {
+            return HardwareType::RME_FIREFACE;
+        }
+
+        // Focusrite Scarlett
+        if (name_lower.find("scarlett") != std::string::npos ||
+            name_lower.find("focusrite") != std::string::npos) {
+            return HardwareType::FOCUSRITE_SCARLETT;
+        }
+
+        // Generic ASIO
+        if (name_lower.find("asio") != std::string::npos) {
+            return HardwareType::GENERIC_ASIO;
+        }
+
+        return HardwareType::UNKNOWN;
     }
 
-    double get_hardware_minimum_latency(HardwareType type) {
+    bool is_professional_hardware_available() {
+        auto hardware = detect_professional_hardware();
+        for (auto type : hardware) {
+            if (is_professional_latency_capable(type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool is_professional_latency_capable(HardwareType type) {
         switch (type) {
         case HardwareType::UAD_APOLLO:
-            return 1.8; // ms - Thunderbolt interface, excellent drivers
         case HardwareType::ALLEN_HEATH_AVANTIS:
-            return 2.1; // ms - Professional console with good USB interface
         case HardwareType::DIGICO_SD9:
-            return 1.9; // ms - Professional console
-        case HardwareType::RME_FIREFACE:
-            return 2.0; // ms - Excellent drivers, professional interface
         case HardwareType::YAMAHA_CL5:
-            return 2.5; // ms - Professional console
+        case HardwareType::RME_FIREFACE:
+            return true;
         case HardwareType::BEHRINGER_X32:
-            return 2.7; // ms - Good value, decent latency
         case HardwareType::FOCUSRITE_SCARLETT:
-            return 3.2; // ms - Consumer/prosumer interface
         case HardwareType::GENERIC_ASIO:
-            return 5.0; // ms - Generic ASIO, varies widely
+            return true;  // Can achieve low latency but not as professional
         default:
-            return 10.0; // ms - System default, higher latency
+            return false;
+        }
+    }
+
+    std::string hardware_type_to_string(HardwareType type) {
+        switch (type) {
+        case HardwareType::UAD_APOLLO: return "UAD Apollo";
+        case HardwareType::ALLEN_HEATH_AVANTIS: return "Allen & Heath Avantis";
+        case HardwareType::DIGICO_SD9: return "DiGiCo SD9";
+        case HardwareType::YAMAHA_CL5: return "Yamaha CL5";
+        case HardwareType::BEHRINGER_X32: return "Behringer X32";
+        case HardwareType::RME_FIREFACE: return "RME Fireface";
+        case HardwareType::FOCUSRITE_SCARLETT: return "Focusrite Scarlett";
+        case HardwareType::GENERIC_ASIO: return "Generic ASIO";
+        default: return "Unknown";
         }
     }
 
     HardwareCapabilities get_hardware_capabilities(HardwareType type) {
         HardwareCapabilities caps;
-        caps.type = type;
-        caps.name = hardware_type_to_string(type);
-        caps.min_latency_ms = get_hardware_minimum_latency(type);
 
         switch (type) {
         case HardwareType::UAD_APOLLO:
-            caps.manufacturer = "Universal Audio";
-            caps.typical_latency_ms = 2.3;
-            caps.max_sample_rate = 192000;
-            caps.max_input_channels = 32;
-            caps.max_output_channels = 32;
-            caps.supports_exclusive_mode = true;
-            caps.supports_low_latency = true;
             caps.supports_asio = true;
-            caps.supports_professional_routing = true;
+            caps.supports_low_latency = true;
+            caps.max_channels = 18;
+            caps.min_buffer_size = 32;
             caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
-            caps.supported_buffer_sizes = { 32, 64, 128, 256, 512, 1024 };
+            caps.min_latency_ms = 1.5;
             break;
 
         case HardwareType::ALLEN_HEATH_AVANTIS:
-            caps.manufacturer = "Allen & Heath";
-            caps.typical_latency_ms = 2.8;
-            caps.max_sample_rate = 96000;
-            caps.max_input_channels = 64;
-            caps.max_output_channels = 64;
-            caps.supports_exclusive_mode = true;
-            caps.supports_low_latency = true;
             caps.supports_asio = true;
-            caps.supports_professional_routing = true;
-            caps.supported_sample_rates = { 44100, 48000, 96000 };
-            caps.supported_buffer_sizes = { 64, 128, 256, 512 };
-            break;
-
-        case HardwareType::DIGICO_SD9:
-            caps.manufacturer = "DiGiCo";
-            caps.typical_latency_ms = 2.5;
-            caps.max_sample_rate = 96000;
-            caps.max_input_channels = 128;
-            caps.max_output_channels = 128;
-            caps.supports_exclusive_mode = true;
             caps.supports_low_latency = true;
-            caps.supports_asio = true;
-            caps.supports_professional_routing = true;
+            caps.max_channels = 64;
+            caps.min_buffer_size = 32;
             caps.supported_sample_rates = { 48000, 96000 };
-            caps.supported_buffer_sizes = { 64, 128, 256 };
+            caps.min_latency_ms = 2.0;
             break;
 
         case HardwareType::RME_FIREFACE:
-            caps.manufacturer = "RME";
-            caps.typical_latency_ms = 2.2;
-            caps.max_sample_rate = 192000;
-            caps.max_input_channels = 24;
-            caps.max_output_channels = 24;
-            caps.supports_exclusive_mode = true;
-            caps.supports_low_latency = true;
             caps.supports_asio = true;
-            caps.supports_professional_routing = true;
+            caps.supports_low_latency = true;
+            caps.max_channels = 30;
+            caps.min_buffer_size = 32;
             caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
-            caps.supported_buffer_sizes = { 32, 64, 128, 256, 512, 1024 };
-            break;
-
-        case HardwareType::YAMAHA_CL5:
-            caps.manufacturer = "Yamaha";
-            caps.typical_latency_ms = 3.0;
-            caps.max_sample_rate = 96000;
-            caps.max_input_channels = 72;
-            caps.max_output_channels = 72;
-            caps.supports_exclusive_mode = true;
-            caps.supports_low_latency = true;
-            caps.supports_asio = true;
-            caps.supports_professional_routing = true;
-            caps.supported_sample_rates = { 44100, 48000, 96000 };
-            caps.supported_buffer_sizes = { 128, 256, 512 };
-            break;
-
-        case HardwareType::BEHRINGER_X32:
-            caps.manufacturer = "Behringer";
-            caps.typical_latency_ms = 3.5;
-            caps.max_sample_rate = 48000;
-            caps.max_input_channels = 32;
-            caps.max_output_channels = 32;
-            caps.supports_exclusive_mode = true;
-            caps.supports_low_latency = true;
-            caps.supports_asio = true;
-            caps.supports_professional_routing = true;
-            caps.supported_sample_rates = { 44100, 48000 };
-            caps.supported_buffer_sizes = { 128, 256, 512, 1024 };
-            break;
-
-        case HardwareType::FOCUSRITE_SCARLETT:
-            caps.manufacturer = "Focusrite";
-            caps.typical_latency_ms = 4.0;
-            caps.max_sample_rate = 192000;
-            caps.max_input_channels = 8;
-            caps.max_output_channels = 8;
-            caps.supports_exclusive_mode = true;
-            caps.supports_low_latency = true;
-            caps.supports_asio = true;
-            caps.supports_professional_routing = false;
-            caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
-            caps.supported_buffer_sizes = { 64, 128, 256, 512, 1024 };
+            caps.min_latency_ms = 1.0;
             break;
 
         default:
-            caps.manufacturer = "Unknown";
-            caps.typical_latency_ms = 12.0;
-            caps.max_sample_rate = 48000;
-            caps.max_input_channels = 2;
-            caps.max_output_channels = 2;
-            caps.supports_exclusive_mode = false;
+            caps.supports_asio = true;
             caps.supports_low_latency = false;
-            caps.supports_asio = false;
-            caps.supports_professional_routing = false;
-            caps.supported_sample_rates = { 44100, 48000 };
-            caps.supported_buffer_sizes = { 256, 512, 1024, 2048 };
+            caps.max_channels = 8;
+            caps.min_buffer_size = 128;
+            caps.supported_sample_rates = { 44100, 48000, 96000 };
+            caps.min_latency_ms = 5.0;
             break;
         }
 
         return caps;
     }
 
-    // Performance optimization based on detected hardware
-    AudioSettings optimize_settings_for_hardware(HardwareType type) {
-        AudioSettings settings;
-
-        switch (type) {
-        case HardwareType::UAD_APOLLO:
-        case HardwareType::RME_FIREFACE:
-            settings.sample_rate = 96000;  // High quality
-            settings.buffer_size = 64;     // Ultra-low latency
-            settings.target_latency_ms = 2.0;
-            break;
-
-        case HardwareType::ALLEN_HEATH_AVANTIS:
-        case HardwareType::DIGICO_SD9:
-            settings.sample_rate = 48000;  // Professional standard
-            settings.buffer_size = 128;    // Low latency
-            settings.target_latency_ms = 3.0;
-            break;
-
-        case HardwareType::BEHRINGER_X32:
-        case HardwareType::FOCUSRITE_SCARLETT:
-            settings.sample_rate = 48000;
-            settings.buffer_size = 256;    // Balanced
-            settings.target_latency_ms = 5.0;
-            break;
-
-        default:
-            settings.sample_rate = 48000;
-            settings.buffer_size = 512;    // Safe default
-            settings.target_latency_ms = 10.0;
-            break;
-        }
-
-        return settings;
-    }
-
-    AudioSettings get_recommended_settings(HardwareType type, bool prioritize_latency) {
-        AudioSettings settings = optimize_settings_for_hardware(type);
-
-        if (!prioritize_latency) {
-            // Prioritize stability over latency
-            settings.buffer_size *= 2;
-            settings.target_latency_ms *= 1.5;
-        }
-
-        return settings;
-    }
-
-    // Professional hardware profiles
-    namespace HardwareProfiles {
-        AudioSettings get_broadcast_profile(HardwareType type) {
-            AudioSettings settings = optimize_settings_for_hardware(type);
-            settings.sample_rate = 48000;  // Broadcast standard
-            settings.buffer_size = 256;    // Stability over latency
-            return settings;
-        }
-
-        AudioSettings get_live_sound_profile(HardwareType type) {
-            AudioSettings settings = optimize_settings_for_hardware(type);
-            // Use optimized settings as-is for live sound
-            return settings;
-        }
-
-        AudioSettings get_recording_profile(HardwareType type) {
-            AudioSettings settings = optimize_settings_for_hardware(type);
-            if (settings.sample_rate < 96000) {
-                settings.sample_rate = 96000;  // High quality for recording
-            }
-            settings.buffer_size = 512;    // Larger buffer for stability
-            return settings;
-        }
-
-        AudioSettings get_post_production_profile(HardwareType type) {
-            AudioSettings settings = optimize_settings_for_hardware(type);
-            settings.sample_rate = 96000;  // High quality
-            settings.buffer_size = 1024;   // Large buffer for complex processing
-            return settings;
-        }
-
-        AudioSettings get_gaming_profile(HardwareType type) {
-            AudioSettings settings = optimize_settings_for_hardware(type);
-            settings.buffer_size = std::min(settings.buffer_size, 128);  // Minimal latency
-            settings.target_latency_ms = std::min(settings.target_latency_ms, 5.0);
-            return settings;
-        }
-    }
-
-} // namespace SharedAudio
+}
