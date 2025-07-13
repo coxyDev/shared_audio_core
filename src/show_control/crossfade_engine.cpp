@@ -2,6 +2,11 @@
 #include <iostream>
 #include <cmath>
 
+// Fix M_PI for Windows
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace SharedAudio {
 
     class CrossfadeEngine::Impl {
@@ -18,13 +23,13 @@ namespace SharedAudio {
 
         bool initialize(int sample_rate) {
             sample_rate_ = sample_rate;
-            std::cout << "🔄 CrossfadeEngine initialized (SR: " << sample_rate << " Hz)" << std::endl;
+            std::cout << "[CROSSFADE] CrossfadeEngine initialized (SR: " << sample_rate << " Hz)" << std::endl;
             return true;
         }
 
         void shutdown() {
             is_crossfading_ = false;
-            std::cout << "🔄 CrossfadeEngine shutdown" << std::endl;
+            std::cout << "[CROSSFADE] CrossfadeEngine shutdown" << std::endl;
         }
 
         bool start_crossfade(const std::string& from_cue, const std::string& to_cue,
@@ -36,7 +41,7 @@ namespace SharedAudio {
             crossfade_samples_remaining_ = crossfade_samples_total_;
             is_crossfading_ = true;
 
-            std::cout << "🔄 Starting crossfade: " << from_cue << " → " << to_cue
+            std::cout << "[CROSSFADE] Starting crossfade: " << from_cue << " -> " << to_cue
                 << " (" << duration_seconds << "s)" << std::endl;
             return true;
         }
@@ -44,7 +49,7 @@ namespace SharedAudio {
         bool stop_crossfade() {
             if (is_crossfading_) {
                 is_crossfading_ = false;
-                std::cout << "🔄 Crossfade stopped" << std::endl;
+                std::cout << "[CROSSFADE] Crossfade stopped" << std::endl;
                 return true;
             }
             return false;

@@ -5,6 +5,15 @@
 #include <string>
 #include <functional>
 
+struct HardwareCapabilities {
+    bool supports_asio;
+    bool supports_low_latency;
+    int max_channels;
+    int min_buffer_size;
+    std::vector<int> supported_sample_rates;
+    double min_latency_ms;
+};
+
 namespace SharedAudio {
 
     // Forward declarations
@@ -101,8 +110,12 @@ namespace SharedAudio {
         CrossfadeEngine* get_crossfade_engine();
 
         // Hardware detection (from Syntri)
-        std::vector<HardwareType> detect_professional_hardware();
+        std::vector<HardwareType> detect_professional_hardware() const;
         bool is_professional_hardware_available() const;
+        HardwareCapabilities get_hardware_capabilities(HardwareType type) const;
+        std::vector<AudioDeviceInfo> get_available_devices();
+        AudioDeviceInfo get_current_device() const;
+        bool set_audio_device(const std::string& device_name);
 
         // Error handling
         std::string get_last_error() const;

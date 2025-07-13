@@ -5,6 +5,11 @@
 #include <mutex>
 #include <map>
 
+// Fix M_PI for Windows
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace SharedAudio {
 
     // Audio cue class
@@ -26,7 +31,7 @@ namespace SharedAudio {
         }
 
         bool load_audio_file() {
-            std::cout << "📁 Loading audio file: " << file_path_ << std::endl;
+            std::cout << "[LOAD] Loading audio file: " << file_path_ << std::endl;
 
             // TODO: Implement proper audio file loading with actual file format support
             // For now, generate test content based on filename
@@ -55,7 +60,7 @@ namespace SharedAudio {
                 audio_data_[1][i] = sample;
             }
 
-            std::cout << "✅ Audio cue loaded: " << cue_id_ << " (" << frequency << "Hz, "
+            std::cout << "[PASS] Audio cue loaded: " << cue_id_ << " (" << frequency << "Hz, "
                 << duration_samples_ / sample_rate_ << "s)" << std::endl;
             return true;
         }
@@ -63,26 +68,26 @@ namespace SharedAudio {
         void start() {
             state_ = CueState::PLAYING;
             current_position_ = 0;
-            std::cout << "▶️  Started cue: " << cue_id_ << std::endl;
+            std::cout << "[PLAY] Started cue: " << cue_id_ << std::endl;
         }
 
         void stop() {
             state_ = CueState::STOPPED;
             current_position_ = 0;
-            std::cout << "⏹️  Stopped cue: " << cue_id_ << std::endl;
+            std::cout << "[STOP] Stopped cue: " << cue_id_ << std::endl;
         }
 
         void pause() {
             if (state_ == CueState::PLAYING) {
                 state_ = CueState::PAUSED;
-                std::cout << "⏸️  Paused cue: " << cue_id_ << std::endl;
+                std::cout << "[PAUSE] Paused cue: " << cue_id_ << std::endl;
             }
         }
 
         void resume() {
             if (state_ == CueState::PAUSED) {
                 state_ = CueState::PLAYING;
-                std::cout << "▶️  Resumed cue: " << cue_id_ << std::endl;
+                std::cout << "[PLAY] Resumed cue: " << cue_id_ << std::endl;
             }
         }
 
@@ -212,7 +217,7 @@ namespace SharedAudio {
             buffer_size_ = buffer_size;
             initialized_ = true;
 
-            std::cout << "🎵 CueAudioManager initialized (SR: " << sample_rate
+            std::cout << "[AUDIO] CueAudioManager initialized (SR: " << sample_rate
                 << " Hz, Buffer: " << buffer_size << ")" << std::endl;
             return true;
         }
@@ -221,7 +226,7 @@ namespace SharedAudio {
             std::lock_guard<std::mutex> lock(cues_mutex_);
             audio_cues_.clear();
             initialized_ = false;
-            std::cout << "🎵 CueAudioManager shutdown" << std::endl;
+            std::cout << "[AUDIO] CueAudioManager shutdown" << std::endl;
         }
 
         bool load_audio_cue(const std::string& cue_id, const std::string& file_path) {

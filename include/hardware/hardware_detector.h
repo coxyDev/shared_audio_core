@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "shared_audio/shared_audio_core.h"
 #include <vector>
@@ -14,8 +14,10 @@ namespace SharedAudio {
         double min_latency_ms;
         double typical_latency_ms;
         int max_sample_rate;
+        int max_channels;
         int max_input_channels;
         int max_output_channels;
+        int min_buffer_size;
         bool supports_exclusive_mode;
         bool supports_low_latency;
         bool supports_asio;

@@ -10,13 +10,13 @@ namespace SharedAudio {
     std::vector<HardwareType> detect_professional_hardware() {
         std::vector<HardwareType> detected;
 
-        std::cout << "🔍 Detecting professional audio hardware..." << std::endl;
+        std::cout << "Detecting professional audio hardware..." << std::endl;
 
         // Initialize PortAudio if not already done
         static bool pa_initialized = false;
         if (!pa_initialized) {
             if (Pa_Initialize() != paNoError) {
-                std::cout << "❌ Error initializing PortAudio for hardware detection" << std::endl;
+                std::cout << "Error initializing PortAudio for hardware detection" << std::endl;
                 return detected;
             }
             pa_initialized = true;
@@ -24,7 +24,7 @@ namespace SharedAudio {
 
         int device_count = Pa_GetDeviceCount();
         if (device_count < 0) {
-            std::cout << "❌ Error getting device count" << std::endl;
+            std::cout << "Error getting device count" << std::endl;
             return detected;
         }
 
@@ -37,13 +37,13 @@ namespace SharedAudio {
 
             if (type != HardwareType::UNKNOWN) {
                 detected.push_back(type);
-                std::cout << "✅ Found: " << hardware_type_to_string(type)
+                std::cout << "Found: " << hardware_type_to_string(type)
                     << " (" << device_name << ")" << std::endl;
             }
         }
 
         if (detected.empty()) {
-            std::cout << "⚠️  No professional hardware detected - using generic audio" << std::endl;
+            std::cout << "No professional hardware detected - using generic audio" << std::endl;
             detected.push_back(HardwareType::GENERIC_ASIO);
         }
 
