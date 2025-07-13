@@ -1,16 +1,42 @@
 {
   "name": "shared-audio-core-node",
   "version": "1.0.0",
-  "description": "Node.js bindings for SharedAudioCore",
+  "description": "Node.js bindings for SharedAudioCore professional audio library",
   "main": "index.js",
   "scripts": {
     "build": "node-gyp rebuild",
-    "clean": "node-gyp clean"
+    "clean": "node-gyp clean",
+    "configure": "node-gyp configure",
+    "install": "node-gyp rebuild",
+    "test": "node test.js"
   },
+  "keywords": [
+    "audio",
+    "professional",
+    "low-latency",
+    "show-control",
+    "cueforge",
+    "syntri",
+    "mainstagesampler"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
     "node-addon-api": "^5.0.0"
   },
   "devDependencies": {
     "node-gyp": "^9.0.0"
-  }
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/shared-audio-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/shared-audio-core/issues"
+  },
+  "homepage": "https://github.com/your-username/shared-audio-core#readme",
+  "gypfile": true
 }
