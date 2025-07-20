@@ -188,43 +188,129 @@ namespace SharedAudio {
 
         switch (type) {
         case HardwareType::UAD_APOLLO:
+            caps.type = type;
+            caps.name = "UAD Apollo";
+            caps.manufacturer = "Universal Audio";
             caps.supports_asio = true;
             caps.supports_low_latency = true;
             caps.max_channels = 18;
+            caps.max_input_channels = 18;
+            caps.max_output_channels = 18;
             caps.min_buffer_size = 32;
+            caps.supports_exclusive_mode = true;
+            caps.supports_professional_routing = true;
             caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
+            caps.supported_buffer_sizes = { 32, 64, 128, 256, 512, 1024 };
             caps.min_latency_ms = 1.5;
+            caps.typical_latency_ms = 3.0;
+            caps.max_sample_rate = 192000;
             break;
 
         case HardwareType::ALLEN_HEATH_AVANTIS:
+            caps.type = type;
+            caps.name = "Allen & Heath Avantis";
+            caps.manufacturer = "Allen & Heath";
             caps.supports_asio = true;
             caps.supports_low_latency = true;
             caps.max_channels = 64;
+            caps.max_input_channels = 64;
+            caps.max_output_channels = 64;
             caps.min_buffer_size = 32;
+            caps.supports_exclusive_mode = true;
+            caps.supports_professional_routing = true;
             caps.supported_sample_rates = { 48000, 96000 };
+            caps.supported_buffer_sizes = { 32, 64, 128, 256 };
             caps.min_latency_ms = 2.0;
+            caps.typical_latency_ms = 4.0;
+            caps.max_sample_rate = 96000;
             break;
 
         case HardwareType::RME_FIREFACE:
+            caps.type = type;
+            caps.name = "RME Fireface";
+            caps.manufacturer = "RME";
             caps.supports_asio = true;
             caps.supports_low_latency = true;
             caps.max_channels = 30;
+            caps.max_input_channels = 30;
+            caps.max_output_channels = 30;
             caps.min_buffer_size = 32;
+            caps.supports_exclusive_mode = true;
+            caps.supports_professional_routing = true;
             caps.supported_sample_rates = { 44100, 48000, 88200, 96000, 176400, 192000 };
+            caps.supported_buffer_sizes = { 32, 64, 128, 256, 512, 1024 };
             caps.min_latency_ms = 1.0;
+            caps.typical_latency_ms = 2.5;
+            caps.max_sample_rate = 192000;
+            break;
+
+        case HardwareType::DIGICO_SD9:
+            caps.type = type;
+            caps.name = "DiGiCo SD9";
+            caps.manufacturer = "DiGiCo";
+            caps.supports_asio = true;
+            caps.supports_low_latency = true;
+            caps.max_channels = 96;
+            caps.max_input_channels = 96;
+            caps.max_output_channels = 96;
+            caps.min_buffer_size = 64;
+            caps.supports_exclusive_mode = true;
+            caps.supports_professional_routing = true;
+            caps.supported_sample_rates = { 48000, 96000 };
+            caps.supported_buffer_sizes = { 64, 128, 256 };
+            caps.min_latency_ms = 2.5;
+            caps.typical_latency_ms = 5.0;
+            caps.max_sample_rate = 96000;
             break;
 
         default:
+            caps.type = type;
+            caps.name = "Generic Audio Device";
+            caps.manufacturer = "Unknown";
             caps.supports_asio = true;
             caps.supports_low_latency = false;
             caps.max_channels = 8;
+            caps.max_input_channels = 8;
+            caps.max_output_channels = 8;
             caps.min_buffer_size = 128;
+            caps.supports_exclusive_mode = false;
+            caps.supports_professional_routing = false;
             caps.supported_sample_rates = { 44100, 48000, 96000 };
+            caps.supported_buffer_sizes = { 128, 256, 512, 1024 };
             caps.min_latency_ms = 5.0;
+            caps.typical_latency_ms = 10.0;
+            caps.max_sample_rate = 96000;
             break;
         }
 
         return caps;
     }
 
-}
+    // Additional functions from the header
+    bool is_hardware_asio_capable(const std::string& device_name) {
+        HardwareType type = detect_hardware_type(device_name);
+        auto caps = get_hardware_capabilities(type);
+        return caps.supports_asio;
+    }
+
+    double get_hardware_minimum_latency(HardwareType type) {
+        auto caps = get_hardware_capabilities(type);
+        return caps.min_latency_ms;
+    }
+
+    AudioSettings optimize_settings_for_hardware(HardwareType type) {
+        AudioSettings settings;
+        auto caps = get_hardware_capabilities(type);
+
+        // Set optimal settings based on hardware capabilities
+        settings.sample_rate = caps.supported_sample_rates.empty() ? 48000 : caps.supported_sample_rates[0];
+        settings.buffer_size = caps.min_buffer_size;
+        settings.input_channels = std::min(2, caps.max_input_channels);
+        settings.output_channels = std::min(2, caps.max_output_channels);
+        settings.enable_asio = caps.supports_asio;
+        settings.target_latency_ms = caps.min_latency_ms;
+
+        return settings;
+    }
+
+} // namespace SharedAudio

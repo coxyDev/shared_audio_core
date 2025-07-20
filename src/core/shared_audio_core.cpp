@@ -1,34 +1,35 @@
 ﻿#include "shared_audio/shared_audio_core.h"
 #include "hardware/hardware_detector.h"
+#include "processing/audio_processor.h"
 #include "show_control/cue_audio_manager.h"
 #include "show_control/crossfade_engine.h"
+#include "core/lock_free_fifo.h"
 
-#include <portaudio.h>
+#include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_audio_basics/juce_audio_basics.h>
+
 #include <iostream>
 #include <chrono>
 #include <thread>
-#include <algorithm>
 
 namespace SharedAudio {
 
-    // Implementation class (PIMPL pattern)
-    class SharedAudioCore::Impl {
+    // Implementation class using JUCE for professional audio
+    class SharedAudioCore::Impl : public juce::AudioIODeviceCallback {
     public:
         Impl()
             : initialized_(false)
             , audio_running_(false)
-            , stream_(nullptr)
-            , current_device_info_(nullptr)
+            , current_sample_rate_(48000)
+            , current_buffer_size_(256)
+            , device_manager_(std::make_unique<juce::AudioDeviceManager>())
             , cue_manager_(std::make_unique<CueAudioManager>())
             , crossfade_engine_(std::make_unique<CrossfadeEngine>())
-            , last_metrics_update_(std::chrono::steady_clock::now())
         {
-            // Initialize performance metrics
-            current_metrics_.current_latency_ms = 0.0;
-            current_metrics_.cpu_usage_percent = 0.0;
-            current_metrics_.buffer_underruns = 0;
-            current_metrics_.buffer_overruns = 0;
-            current_metrics_.is_stable = false;
+            // Set thread priority for audio callback
+#ifdef PLATFORM_WINDOWS
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+#endif
         }
 
         ~Impl() {
@@ -40,30 +41,57 @@ namespace SharedAudio {
                 return true;
             }
 
-            // Initialize PortAudio
-            PaError err = Pa_Initialize();
-            if (err != paNoError) {
-                last_error_ = "Failed to initialize PortAudio: " + std::string(Pa_GetErrorText(err));
-                return false;
-            }
-
             settings_ = settings;
 
-            // Detect and setup audio device
-            if (!setup_audio_device()) {
-                Pa_Terminate();
+            // Initialize JUCE audio device manager
+            auto result = device_manager_->initialiseWithDefaultDevices(
+                settings.input_channels,
+                settings.output_channels
+            );
+
+            if (!result.isEmpty()) {
+                last_error_ = "Failed to initialize audio device: " + result.toStdString();
                 return false;
             }
 
-            // Initialize components
-            cue_manager_->initialize(settings.sample_rate, settings.buffer_size);
-            crossfade_engine_->initialize(settings.sample_rate);
+            // Try to select ASIO device if requested and available
+            if (settings.enable_asio && !setup_asio_device(settings.device_name)) {
+                std::cout << "ASIO not available, using default audio device" << std::endl;
+            }
+
+            // Setup audio device
+            juce::AudioDeviceManager::AudioDeviceSetup setup;
+            device_manager_->getAudioDeviceSetup(setup);
+
+            setup.sampleRate = settings.sample_rate;
+            setup.bufferSize = settings.buffer_size;
+
+            result = device_manager_->setAudioDeviceSetup(setup, true);
+            if (!result.isEmpty()) {
+                last_error_ = "Failed to configure audio device: " + result.toStdString();
+                return false;
+            }
+
+            // Get actual settings
+            device_manager_->getAudioDeviceSetup(setup);
+            current_sample_rate_ = setup.sampleRate;
+            current_buffer_size_ = setup.bufferSize;
+
+            // Initialize components with actual sample rate
+            cue_manager_->initialize(static_cast<int>(current_sample_rate_),
+                current_buffer_size_);
+            crossfade_engine_->initialize(static_cast<int>(current_sample_rate_));
+
+            // Set this as the audio callback
+            device_manager_->addAudioCallback(this);
 
             initialized_ = true;
+
             std::cout << "SharedAudioCore initialized successfully" << std::endl;
-            std::cout << "Sample Rate: " << settings_.sample_rate << " Hz" << std::endl;
-            std::cout << "Buffer Size: " << settings_.buffer_size << " samples" << std::endl;
-            std::cout << "Target Latency: " << settings_.target_latency_ms << " ms" << std::endl;
+            std::cout << "Audio Device: " << getCurrentDeviceName() << std::endl;
+            std::cout << "Sample Rate: " << current_sample_rate_ << " Hz" << std::endl;
+            std::cout << "Buffer Size: " << current_buffer_size_ << " samples" << std::endl;
+            std::cout << "Latency: " << getLatencyMs() << " ms" << std::endl;
 
             return true;
         }
@@ -75,232 +103,222 @@ namespace SharedAudio {
 
             stop_audio();
 
-            if (stream_) {
-                Pa_CloseStream(stream_);
-                stream_ = nullptr;
-            }
+            device_manager_->removeAudioCallback(this);
+            device_manager_->closeAudioDevice();
 
-            Pa_Terminate();
             initialized_ = false;
+
             std::cout << "SharedAudioCore shutdown complete" << std::endl;
         }
 
-        bool setup_audio_device() {
-            PaDeviceIndex device_index = Pa_GetDefaultOutputDevice();
+        bool setup_asio_device(const std::string& preferred_device) {
+#ifdef PLATFORM_WINDOWS
+            // Use our header-only ASIO detection
+            auto asio_drivers = ASIOHeaderInterface::detectASIODrivers();
 
-            if (device_index == paNoDevice) {
-                last_error_ = "No default audio device found";
+            if (asio_drivers.empty()) {
                 return false;
             }
 
-            current_device_info_ = Pa_GetDeviceInfo(device_index);
-            if (!current_device_info_) {
-                last_error_ = "Failed to get device info";
-                return false;
+            // Find ASIO device type in JUCE
+            auto* asio_type = device_manager_->getAvailableDeviceTypes().getFirst();
+            while (asio_type != nullptr) {
+                if (asio_type->getTypeName() == "ASIO") {
+                    device_manager_->setCurrentAudioDeviceType("ASIO", true);
+
+                    // Try to find preferred device
+                    if (!preferred_device.empty()) {
+                        auto device_names = asio_type->getDeviceNames();
+                        for (const auto& name : device_names) {
+                            if (name.toStdString().find(preferred_device) != std::string::npos) {
+                                juce::AudioDeviceManager::AudioDeviceSetup setup;
+                                device_manager_->getAudioDeviceSetup(setup);
+                                setup.outputDeviceName = name;
+                                setup.inputDeviceName = name;
+                                device_manager_->setAudioDeviceSetup(setup, true);
+                                return true;
+                            }
+                        }
+                    }
+
+                    return true; // ASIO available, will use default ASIO device
+                }
+                asio_type = device_manager_->getAvailableDeviceTypes().getNext(asio_type);
             }
-
-            // Setup stream parameters
-            PaStreamParameters output_params;
-            output_params.device = device_index;
-            output_params.channelCount = settings_.output_channels;
-            output_params.sampleFormat = paFloat32;
-            output_params.suggestedLatency = current_device_info_->defaultLowOutputLatency;
-            output_params.hostApiSpecificStreamInfo = nullptr;
-
-            PaStreamParameters input_params;
-            input_params.device = Pa_GetDefaultInputDevice();
-            input_params.channelCount = settings_.input_channels;
-            input_params.sampleFormat = paFloat32;
-            input_params.suggestedLatency = Pa_GetDeviceInfo(input_params.device)->defaultLowInputLatency;
-            input_params.hostApiSpecificStreamInfo = nullptr;
-
-            // Create the audio stream
-            PaError err = Pa_OpenStream(
-                &stream_,
-                &input_params,
-                &output_params,
-                settings_.sample_rate,
-                settings_.buffer_size,
-                paClipOff,
-                &audio_callback_static,
-                this
-            );
-
-            if (err != paNoError) {
-                last_error_ = "Failed to open audio stream: " + std::string(Pa_GetErrorText(err));
-                return false;
-            }
-
-            return true;
+#endif
+            return false;
         }
 
         void start_audio() {
-            if (!initialized_ || !stream_ || audio_running_) {
+            if (!initialized_ || audio_running_) {
                 return;
             }
 
-            PaError err = Pa_StartStream(stream_);
-            if (err != paNoError) {
-                last_error_ = "Failed to start audio stream: " + std::string(Pa_GetErrorText(err));
-                return;
-            }
-
+            // Audio is automatically started by JUCE when callback is added
             audio_running_ = true;
-            current_metrics_.is_stable = true;
-            std::cout << "Audio stream started" << std::endl;
+            std::cout << "Audio started successfully" << std::endl;
         }
 
         void stop_audio() {
-            if (!audio_running_ || !stream_) {
+            if (!audio_running_) {
                 return;
             }
 
-            PaError err = Pa_StopStream(stream_);
-            if (err != paNoError) {
-                last_error_ = "Failed to stop audio stream: " + std::string(Pa_GetErrorText(err));
-            }
-
             audio_running_ = false;
-            current_metrics_.is_stable = false;
-            std::cout << "Audio stream stopped" << std::endl;
+            std::cout << "Audio stopped" << std::endl;
         }
 
-        std::vector<AudioDeviceInfo> get_available_devices() {
-            std::vector<AudioDeviceInfo> devices;
-
-            int device_count = Pa_GetDeviceCount();
-            if (device_count < 0) {
-                return devices;
+        // JUCE Audio Callback - REAL-TIME THREAD
+        void audioDeviceIOCallback(const float** inputChannelData,
+            int numInputChannels,
+            float** outputChannelData,
+            int numOutputChannels,
+            int numSamples) override {
+            // Process messages from non-realtime thread
+            AudioThreadMessage msg;
+            while (message_queue_.pop(msg)) {
+                processAudioThreadMessage(msg);
             }
-
-            for (int i = 0; i < device_count; ++i) {
-                const PaDeviceInfo* device_info = Pa_GetDeviceInfo(i);
-                if (!device_info) continue;
-
-                AudioDeviceInfo info;
-                info.name = device_info->name;
-                info.max_input_channels = device_info->maxInputChannels;
-                info.max_output_channels = device_info->maxOutputChannels;
-                info.is_default_input = (i == Pa_GetDefaultInputDevice());
-                info.is_default_output = (i == Pa_GetDefaultOutputDevice());
-
-                // Detect hardware type
-                info.hardware_type = detect_hardware_type(info.name);
-                info.supports_asio = (info.hardware_type != HardwareType::UNKNOWN);
-                info.min_latency_ms = device_info->defaultLowOutputLatency * 1000.0;
-
-                devices.push_back(info);
-            }
-
-            return devices;
-        }
-
-        PerformanceMetrics get_performance_metrics() const {
-            auto now = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_metrics_update_);
-
-            // Update metrics if enough time has passed
-            if (duration.count() > 100) { // Update every 100ms
-                update_performance_metrics();
-                last_metrics_update_ = now;
-            }
-
-            return current_metrics_;
-        }
-
-        void update_performance_metrics() const {
-            if (stream_ && audio_running_) {
-                const PaStreamInfo* info = Pa_GetStreamInfo(stream_);
-                if (info) {
-                    current_metrics_.current_latency_ms = (info->inputLatency + info->outputLatency) * 1000.0;
-                }
-
-                // Estimate CPU usage (simplified)
-                current_metrics_.cpu_usage_percent = Pa_GetStreamCpuLoad(stream_) * 100.0;
-
-                // Check stability
-                current_metrics_.is_stable = (current_metrics_.current_latency_ms < settings_.target_latency_ms * 2.0) &&
-                    (current_metrics_.cpu_usage_percent < 50.0);
-            }
-        }
-
-        // Static callback wrapper
-        static int audio_callback_static(
-            const void* inputs,
-            void* outputs,
-            unsigned long frames_per_buffer,
-            const PaStreamCallbackTimeInfo* time_info,
-            PaStreamCallbackFlags status_flags,
-            void* user_data
-        ) {
-            Impl* impl = static_cast<Impl*>(user_data);
-            return impl->audio_callback(inputs, outputs, frames_per_buffer, time_info, status_flags);
-        }
-
-        // Main audio callback
-        int audio_callback(
-            const void* inputs,
-            void* outputs,
-            unsigned long frames_per_buffer,
-            const PaStreamCallbackTimeInfo* time_info,
-            PaStreamCallbackFlags status_flags
-        ) {
-            const float* input_buffer = static_cast<const float*>(inputs);
-            float* output_buffer = static_cast<float*>(outputs);
 
             // Convert to our buffer format
-            AudioBuffer input_channels(settings_.input_channels);
-            AudioBuffer output_channels(settings_.output_channels);
+            AudioBuffer input_channels(numInputChannels);
+            AudioBuffer output_channels(numOutputChannels);
 
-            for (int ch = 0; ch < settings_.input_channels; ++ch) {
-                input_channels[ch].resize(frames_per_buffer);
-                if (input_buffer) {
-                    for (unsigned long i = 0; i < frames_per_buffer; ++i) {
-                        input_channels[ch][i] = input_buffer[i * settings_.input_channels + ch];
-                    }
+            for (int ch = 0; ch < numInputChannels; ++ch) {
+                input_channels[ch].resize(numSamples);
+                if (inputChannelData && inputChannelData[ch]) {
+                    std::copy(inputChannelData[ch],
+                        inputChannelData[ch] + numSamples,
+                        input_channels[ch].begin());
                 }
             }
 
-            for (int ch = 0; ch < settings_.output_channels; ++ch) {
-                output_channels[ch].resize(frames_per_buffer);
+            for (int ch = 0; ch < numOutputChannels; ++ch) {
+                output_channels[ch].resize(numSamples);
                 std::fill(output_channels[ch].begin(), output_channels[ch].end(), 0.0f);
             }
 
-            // Call user callback if set
+            // Call user callback if set (NO LOCKS!)
             if (user_callback_) {
-                user_callback_(input_channels, output_channels, frames_per_buffer, settings_.sample_rate);
+                user_callback_(input_channels, output_channels, numSamples, current_sample_rate_);
             }
 
-            // Process through show control systems
-            cue_manager_->process_audio(input_channels, output_channels, frames_per_buffer);
-            crossfade_engine_->process_audio(output_channels, frames_per_buffer);
+            // Process through show control systems (lock-free)
+            cue_manager_->process_audio(input_channels, output_channels, numSamples);
+            crossfade_engine_->process_audio(output_channels, numSamples);
 
-            // Convert back to interleaved format
-            for (int ch = 0; ch < settings_.output_channels; ++ch) {
-                for (unsigned long i = 0; i < frames_per_buffer; ++i) {
-                    output_buffer[i * settings_.output_channels + ch] = output_channels[ch][i];
+            // Copy back to output
+            for (int ch = 0; ch < numOutputChannels; ++ch) {
+                if (outputChannelData && outputChannelData[ch]) {
+                    std::copy(output_channels[ch].begin(),
+                        output_channels[ch].begin() + numSamples,
+                        outputChannelData[ch]);
                 }
             }
 
-            return paContinue;
+            // Update performance metrics (lock-free)
+            updatePerformanceMetrics(numSamples);
+        }
+
+        void audioDeviceAboutToStart(juce::AudioIODevice* device) override {
+            // Called before audio starts
+            current_sample_rate_ = device->getCurrentSampleRate();
+            current_buffer_size_ = device->getCurrentBufferSizeSamples();
+        }
+
+        void audioDeviceStopped() override {
+            // Called when audio stops
+        }
+
+        // Process messages in audio thread (lock-free)
+        void processAudioThreadMessage(const AudioThreadMessage& msg) {
+            switch (msg.type) {
+            case AudioThreadMessage::START_CUE:
+                cue_manager_->start_cue_realtime(msg.cue_id);
+                break;
+            case AudioThreadMessage::STOP_CUE:
+                cue_manager_->stop_cue_realtime(msg.cue_id);
+                break;
+            case AudioThreadMessage::SET_VOLUME:
+                cue_manager_->set_cue_volume_realtime(msg.cue_id, msg.param1.float_value);
+                break;
+            case AudioThreadMessage::CROSSFADE:
+                crossfade_engine_->start_crossfade_realtime(
+                    msg.cue_id,
+                    reinterpret_cast<const char*>(&msg.param2), // to_cue_id stored here
+                    msg.param1.double_value
+                );
+                break;
+            default:
+                break;
+            }
+        }
+
+        // Send message to audio thread (lock-free)
+        bool sendAudioThreadMessage(const AudioThreadMessage& msg) {
+            return message_queue_.push(msg);
+        }
+
+        void updatePerformanceMetrics(int samples_processed) {
+            // Update metrics without locks
+            samples_processed_total_.fetch_add(samples_processed, std::memory_order_relaxed);
+
+            // Calculate CPU usage periodically
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_metrics_update_ > std::chrono::milliseconds(100)) {
+                // Update metrics (this is approximate, no locks needed)
+                double latency = getLatencyMs();
+                current_metrics_.current_latency_ms = latency;
+                current_metrics_.is_stable = true;
+
+                last_metrics_update_ = now;
+            }
+        }
+
+        double getLatencyMs() const {
+            if (!device_manager_->getCurrentAudioDevice()) {
+                return 0.0;
+            }
+
+            int total_latency = device_manager_->getCurrentAudioDevice()->getOutputLatencyInSamples() +
+                device_manager_->getCurrentAudioDevice()->getInputLatencyInSamples();
+
+            return (total_latency * 1000.0) / current_sample_rate_;
+        }
+
+        std::string getCurrentDeviceName() const {
+            auto* device = device_manager_->getCurrentAudioDevice();
+            if (device) {
+                return device->getName().toStdString();
+            }
+            return "No Device";
         }
 
         // Member variables
         bool initialized_;
         bool audio_running_;
-        PaStream* stream_;
-        const PaDeviceInfo* current_device_info_;
         AudioSettings settings_;
         AudioCallback user_callback_;
         std::string last_error_;
+
+        // JUCE components
+        std::unique_ptr<juce::AudioDeviceManager> device_manager_;
+
+        // Audio parameters
+        double current_sample_rate_;
+        int current_buffer_size_;
 
         // Components
         std::unique_ptr<CueAudioManager> cue_manager_;
         std::unique_ptr<CrossfadeEngine> crossfade_engine_;
 
-        // Performance tracking
-        mutable std::chrono::steady_clock::time_point last_metrics_update_;
-        mutable PerformanceMetrics current_metrics_;
+        // Lock-free message queue for real-time thread communication
+        AudioMessageQueue message_queue_;
+
+        // Performance tracking (lock-free)
+        std::atomic<int64_t> samples_processed_total_{ 0 };
+        std::chrono::steady_clock::time_point last_metrics_update_;
+        PerformanceMetrics current_metrics_;
     };
 
     // SharedAudioCore public interface implementation
@@ -339,24 +357,6 @@ namespace SharedAudio {
         return impl_->audio_running_;
     }
 
-    std::vector<AudioDeviceInfo> SharedAudioCore::get_available_devices() {
-        return ::SharedAudio::get_available_devices(); 
-    }
-
-    AudioDeviceInfo SharedAudioCore::get_current_device() const {
-        AudioDeviceInfo info;
-        if (impl_->current_device_info_) {
-            info.name = impl_->current_device_info_->name;
-            info.max_input_channels = impl_->current_device_info_->maxInputChannels;
-            info.max_output_channels = impl_->current_device_info_->maxOutputChannels;
-        }
-        return info;
-    }
-
-    PerformanceMetrics SharedAudioCore::get_performance_metrics() const {
-        return impl_->get_performance_metrics();
-    }
-
     CueAudioManager* SharedAudioCore::get_cue_manager() {
         return impl_->cue_manager_.get();
     }
@@ -365,64 +365,49 @@ namespace SharedAudio {
         return impl_->crossfade_engine_.get();
     }
 
-    std::vector<HardwareType> SharedAudioCore::detect_professional_hardware() const {
-        return ::SharedAudio::detect_professional_hardware();
-    }
-
-    bool SharedAudioCore::is_professional_hardware_available() const {
-        auto hardware = detect_professional_hardware();
-        return !hardware.empty() && hardware[0] != HardwareType::UNKNOWN;
+    PerformanceMetrics SharedAudioCore::get_performance_metrics() const {
+        return impl_->current_metrics_;
     }
 
     std::string SharedAudioCore::get_last_error() const {
         return impl_->last_error_;
     }
 
-    // Utility function implementations
-    std::string hardware_type_to_string(HardwareType type) {
-        switch (type) {
-        case HardwareType::GENERIC_ASIO: return "Generic ASIO";
-        case HardwareType::UAD_APOLLO: return "UAD Apollo";
-        case HardwareType::ALLEN_HEATH_AVANTIS: return "Allen & Heath Avantis";
-        case HardwareType::DIGICO_SD9: return "DiGiCo SD9";
-        case HardwareType::YAMAHA_CL5: return "Yamaha CL5";
-        case HardwareType::BEHRINGER_X32: return "Behringer X32";
-        case HardwareType::RME_FIREFACE: return "RME Fireface";
-        case HardwareType::FOCUSRITE_SCARLETT: return "Focusrite Scarlett";
-        default: return "Unknown";
+    // Hardware detection
+    std::vector<HardwareType> SharedAudioCore::detect_professional_hardware() {
+#ifdef PLATFORM_WINDOWS
+        // Use our header-only ASIO detection
+        auto asio_drivers = ASIOHeaderInterface::detectASIODrivers();
+        std::vector<HardwareType> detected;
+
+        for (const auto& driver : asio_drivers) {
+            if (driver.is_available) {
+                HardwareType type = detect_hardware_type(driver.name);
+                if (type != HardwareType::UNKNOWN) {
+                    detected.push_back(type);
+                }
+            }
         }
+
+        if (!asio_drivers.empty()) {
+            detected.push_back(HardwareType::GENERIC_ASIO);
+        }
+
+        return detected;
+#else
+        return {}; // Non-Windows platforms
+#endif
     }
 
-    HardwareType detect_hardware_type(const std::string& device_name) {
-        std::string lower_name = device_name;
-        std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
-
-        if (lower_name.find("apollo") != std::string::npos) return HardwareType::UAD_APOLLO;
-        if (lower_name.find("avantis") != std::string::npos) return HardwareType::ALLEN_HEATH_AVANTIS;
-        if (lower_name.find("digico") != std::string::npos || lower_name.find("sd9") != std::string::npos) return HardwareType::DIGICO_SD9;
-        if (lower_name.find("yamaha") != std::string::npos || lower_name.find("cl5") != std::string::npos) return HardwareType::YAMAHA_CL5;
-        if (lower_name.find("x32") != std::string::npos || lower_name.find("behringer") != std::string::npos) return HardwareType::BEHRINGER_X32;
-        if (lower_name.find("rme") != std::string::npos || lower_name.find("fireface") != std::string::npos) return HardwareType::RME_FIREFACE;
-        if (lower_name.find("focusrite") != std::string::npos || lower_name.find("scarlett") != std::string::npos) return HardwareType::FOCUSRITE_SCARLETT;
-        if (lower_name.find("asio") != std::string::npos) return HardwareType::GENERIC_ASIO;
-
-        return HardwareType::UNKNOWN;
-    }
-
-    bool is_professional_latency_capable(HardwareType type) {
-        switch (type) {
-        case HardwareType::UAD_APOLLO:
-        case HardwareType::ALLEN_HEATH_AVANTIS:
-        case HardwareType::DIGICO_SD9:
-        case HardwareType::RME_FIREFACE:
-            return true;
-        default:
-            return false;
-        }
+    bool SharedAudioCore::is_professional_hardware_available() const {
+        auto hardware = detect_professional_hardware();
+        return !hardware.empty();
     }
 
     // Factory function
     std::unique_ptr<SharedAudioCore> create_audio_core() {
+        // Initialize JUCE
+        static juce::ScopedJuceInitialiser_GUI juce_initializer;
         return std::make_unique<SharedAudioCore>();
     }
 

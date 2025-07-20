@@ -10,16 +10,14 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_ELECTRON_BINDING "Build Electron/Node.js binding" ON)
-option(BUILD_JUCE_INTEGRATION "Build JUCE integration" OFF)
 
 # Platform detection
 if(WIN32)
     set(PLATFORM_WINDOWS TRUE)
     add_definitions(-DPLATFORM_WINDOWS=1)
-    add_definitions(-D_WIN32_WINNT=0x0601)  # Windows 7+
-    add_definitions(-DWINVER=0x0601)
-    add_definitions(-DNOMINMAX)  # Prevent Windows.h min/max conflicts
-    add_definitions(-DWIN32_LEAN_AND_MEAN)  # Reduce Windows.h bloat
+    # Enable Windows-specific optimizations
+    add_definitions(-D_WIN32_WINNT=0x0A00) # Windows 10
+    add_definitions(-DNOMINMAX) # Prevent Windows.h min/max macros
 elseif(APPLE)
     set(PLATFORM_MACOS TRUE)
     add_definitions(-DPLATFORM_MACOS=1)
@@ -28,192 +26,144 @@ elseif(UNIX)
     add_definitions(-DPLATFORM_LINUX=1)
 endif()
 
-# =============================================
-# PORTAUDIO DETECTION (Windows/vcpkg friendly)
-# =============================================
-
-if(WIN32)
-    # On Windows, prefer vcpkg's CMake integration
-    message(STATUS "Windows detected - using vcpkg CMake integration for PortAudio")
-    
-    # Try to find PortAudio via vcpkg's CMake config
-    find_package(portaudio CONFIG QUIET)
-    
-    if(portaudio_FOUND)
-        message(STATUS "✅ PortAudio found via vcpkg CMake config")
-        set(PORTAUDIO_FOUND TRUE)
-        set(PORTAUDIO_LIBRARIES portaudio)
-        get_target_property(PORTAUDIO_INCLUDE_DIRS portaudio INTERFACE_INCLUDE_DIRECTORIES)
-        
-    else()
-        # Fallback: Try to find manually installed PortAudio
-        message(STATUS "vcpkg PortAudio not found, trying manual detection...")
-        
-        find_path(PORTAUDIO_INCLUDE_DIR portaudio.h
-            HINTS 
-                ${CMAKE_PREFIX_PATH}/include
-                C:/portaudio/include
-                C:/Program\ Files/portaudio/include
-                C:/Program\ Files\ \(x86\)/portaudio/include
-        )
-        
-        find_library(PORTAUDIO_LIBRARY 
-            NAMES portaudio portaudio_static portaudio_x64 portaudio_x86
-            HINTS
-                ${CMAKE_PREFIX_PATH}/lib
-                C:/portaudio/lib
-                C:/Program\ Files/portaudio/lib
-                C:/Program\ Files\ \(x86\)/portaudio/lib
-        )
-        
-        if(PORTAUDIO_INCLUDE_DIR AND PORTAUDIO_LIBRARY)
-            set(PORTAUDIO_FOUND TRUE)
-            set(PORTAUDIO_INCLUDE_DIRS ${PORTAUDIO_INCLUDE_DIR})
-            set(PORTAUDIO_LIBRARIES ${PORTAUDIO_LIBRARY})
-            message(STATUS "✅ PortAudio found manually: ${PORTAUDIO_LIBRARY}")
-        else()
-            message(FATAL_ERROR "❌ PortAudio not found. Please install via vcpkg: 'vcpkg install portaudio:x64-windows'")
-        endif()
-    endif()
-    
-else()
-    # On Unix systems, use pkg-config
-    find_package(PkgConfig)
-    
-    if(PkgConfig_FOUND)
-        pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
-        message(STATUS "✅ PortAudio found via pkg-config")
-    else()
-        message(FATAL_ERROR "❌ pkg-config not found. Please install pkg-config and portaudio development packages.")
-    endif()
+# Find vcpkg if available
+if(DEFINED ENV{VCPKG_ROOT})
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 endif()
 
-# =============================================
-# JUCE FRAMEWORK (Optional)
-# =============================================
-
-if(BUILD_JUCE_INTEGRATION)
-    find_package(JUCE CONFIG QUIET)
-    if(JUCE_FOUND)
-        set(HAS_JUCE TRUE)
-        add_definitions(-DHAS_JUCE=1)
-        message(STATUS "✅ JUCE found - enabling JUCE integration")
-    else()
-        message(WARNING "⚠️  JUCE not found, JUCE integration will be disabled")
-        set(BUILD_JUCE_INTEGRATION OFF)
-    endif()
+# Find JUCE (REQUIRED for professional audio)
+find_package(JUCE CONFIG REQUIRED)
+if(NOT JUCE_FOUND)
+    message(FATAL_ERROR "JUCE is required for SharedAudioCore. Please install JUCE or set JUCE_DIR")
 endif()
 
-# =============================================
-# INCLUDE DIRECTORIES
-# =============================================
+# Set JUCE modules we need
+set(JUCE_MODULES_ONLY ON)
 
+# Find PortAudio as fallback
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+    pkg_check_modules(PORTAUDIO portaudio-2.0)
+endif()
+
+# Include directories
 include_directories(include)
-if(PORTAUDIO_INCLUDE_DIRS)
-    include_directories(${PORTAUDIO_INCLUDE_DIRS})
-endif()
 
-# =============================================
-# SOURCE FILES
-# =============================================
-
-# Core source files (only include files that actually exist)
+# Source files
 set(CORE_SOURCES
     src/core/shared_audio_core.cpp
+    src/core/audio_device_manager.cpp
+    src/core/audio_buffer.cpp
+    src/core/audio_callback.cpp
+    src/core/lock_free_fifo.cpp
     src/hardware/hardware_detector.cpp
+    src/hardware/asio_header_interface.cpp
+    src/processing/audio_processor.cpp
+    src/processing/multi_channel_mixer.cpp
+    src/processing/audio_file_loader.cpp
+    src/processing/effects_processor.cpp
     src/show_control/cue_audio_manager.cpp
     src/show_control/crossfade_engine.cpp
 )
 
-# Platform-specific sources (commented out until implemented)
-# TODO: Add these files as they are implemented
-#if(PLATFORM_WINDOWS)
-#    list(APPEND CORE_SOURCES
-#        src/platform/windows/asio_driver_manager.cpp
-#    )
-#elseif(PLATFORM_MACOS)
-#    list(APPEND CORE_SOURCES
-#        src/platform/macos/core_audio_interface.cpp
-#    )
-#elseif(PLATFORM_LINUX)
-#    list(APPEND CORE_SOURCES
-#        src/platform/linux/alsa_interface.cpp
-#        src/platform/linux/pulse_interface.cpp
-#    )
-#endif()
-
-# JUCE integration sources (when available)
-if(BUILD_JUCE_INTEGRATION AND HAS_JUCE)
+# Platform-specific sources
+if(PLATFORM_WINDOWS)
     list(APPEND CORE_SOURCES
-        src/juce_integration/juce_audio_bridge.cpp
-        src/juce_integration/juce_effects_processor.cpp
+        src/platform/windows/windows_audio_driver.cpp
+        src/platform/windows/asio_registry_scanner.cpp
+        src/platform/windows/wasapi_interface.cpp
+    )
+elseif(PLATFORM_MACOS)
+    list(APPEND CORE_SOURCES
+        src/platform/macos/core_audio_interface.cpp
+    )
+elseif(PLATFORM_LINUX)
+    list(APPEND CORE_SOURCES
+        src/platform/linux/alsa_interface.cpp
+        src/platform/linux/jack_interface.cpp
     )
 endif()
 
-# =============================================
-# CREATE SHARED LIBRARY
-# =============================================
-
+# Create shared library
 add_library(SharedAudioCore SHARED ${CORE_SOURCES})
 
-# Link PortAudio
-target_link_libraries(SharedAudioCore ${PORTAUDIO_LIBRARIES})
+# Set up JUCE
+target_compile_definitions(SharedAudioCore
+    PRIVATE
+        JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+        JUCE_STANDALONE_APPLICATION=0
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+)
+
+# Link JUCE modules
+target_link_libraries(SharedAudioCore
+    PRIVATE
+        juce::juce_audio_basics
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_events
+)
 
 # Platform-specific linking
 if(PLATFORM_WINDOWS)
     target_link_libraries(SharedAudioCore
-        winmm      # Windows Multimedia API
-        dsound     # DirectSound
-        ole32      # COM support
-        user32     # User interface
-        advapi32   # Registry access
-        kernel32   # Core Windows APIs
+        PRIVATE
+            winmm
+            ole32
+            oleaut32
+            uuid
+            user32
+            advapi32
+            kernel32
     )
     
-    # Windows-specific compile definitions
-    target_compile_definitions(SharedAudioCore PRIVATE
-        _CRT_SECURE_NO_WARNINGS
-        WIN32_LEAN_AND_MEAN
-        NOMINMAX
+    # Set Windows subsystem
+    set_target_properties(SharedAudioCore PROPERTIES
+        LINK_FLAGS "/SUBSYSTEM:WINDOWS"
     )
-    
 elseif(PLATFORM_MACOS)
     target_link_libraries(SharedAudioCore
-        "-framework CoreAudio"
-        "-framework AudioUnit"
-        "-framework CoreServices"
+        PRIVATE
+            "-framework CoreAudio"
+            "-framework AudioUnit"
+            "-framework CoreServices"
+            "-framework CoreMIDI"
+            "-framework Accelerate"
     )
 elseif(PLATFORM_LINUX)
     target_link_libraries(SharedAudioCore
-        ${PORTAUDIO_LIBRARIES}
-        pthread
-        m  # Math library
+        PRIVATE
+            ${CMAKE_DL_LIBS}
+            pthread
+            rt
+    )
+    
+    if(PORTAUDIO_FOUND)
+        target_link_libraries(SharedAudioCore PRIVATE ${PORTAUDIO_LIBRARIES})
+        target_include_directories(SharedAudioCore PRIVATE ${PORTAUDIO_INCLUDE_DIRS})
+    endif()
+endif()
+
+# Export symbols for Node.js binding
+if(PLATFORM_WINDOWS)
+    set_target_properties(SharedAudioCore PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
     )
 endif()
 
-# JUCE linking
-if(BUILD_JUCE_INTEGRATION AND HAS_JUCE)
-    target_link_libraries(SharedAudioCore
-        juce::juce_audio_utils
-        juce::juce_audio_devices
-        juce::juce_audio_formats
-        juce::juce_audio_processors
-    )
-endif()
-
-# =============================================
-# COMPILER DEFINITIONS
-# =============================================
-
-target_compile_definitions(SharedAudioCore PRIVATE
-    SHARED_AUDIO_CORE_VERSION_MAJOR=1
-    SHARED_AUDIO_CORE_VERSION_MINOR=0
-    SHARED_AUDIO_CORE_VERSION_PATCH=0
+# Compiler optimizations for real-time audio
+target_compile_options(SharedAudioCore PRIVATE
+    $<$<CONFIG:Release>:
+        $<$<CXX_COMPILER_ID:MSVC>:/O2 /fp:fast /arch:AVX2>
+        $<$<CXX_COMPILER_ID:GNU>:-O3 -march=native -ffast-math>
+        $<$<CXX_COMPILER_ID:Clang>:-O3 -march=native -ffast-math>
+    >
 )
-
-# =============================================
-# BUILD SUBDIRECTORIES
-# =============================================
 
 # Build tests
 if(BUILD_TESTS)
@@ -226,19 +176,12 @@ if(BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
-# Build Electron binding (optional, requires Node.js)
+# Build Electron binding
 if(BUILD_ELECTRON_BINDING)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bindings/electron/CMakeLists.txt")
-        add_subdirectory(bindings/electron)
-    else()
-        message(STATUS "⚠️  Electron binding directory not found - skipping")
-    endif()
+    add_subdirectory(bindings/electron)
 endif()
 
-# =============================================
-# INSTALLATION
-# =============================================
-
+# Install configuration
 install(TARGETS SharedAudioCore
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
@@ -247,55 +190,13 @@ install(TARGETS SharedAudioCore
 
 install(DIRECTORY include/ DESTINATION include)
 
-# =============================================
-# STATUS INFORMATION
-# =============================================
+# Generate pkg-config file
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/SharedAudioCore.pc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/SharedAudioCore.pc"
+    @ONLY
+)
 
-message(STATUS "==========================================")
-message(STATUS "       SharedAudioCore Build Configuration")
-message(STATUS "==========================================")
-message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Platform: ${CMAKE_SYSTEM_NAME}")
-message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "")
-message(STATUS "Dependencies:")
-message(STATUS "  - PortAudio: ${PORTAUDIO_FOUND}")
-if(PORTAUDIO_FOUND)
-    message(STATUS "    Libraries: ${PORTAUDIO_LIBRARIES}")
-    if(PORTAUDIO_INCLUDE_DIRS)
-        message(STATUS "    Include Dirs: ${PORTAUDIO_INCLUDE_DIRS}")
-    endif()
-endif()
-message(STATUS "  - JUCE Integration: ${BUILD_JUCE_INTEGRATION}")
-message(STATUS "")
-message(STATUS "Build Targets:")
-message(STATUS "  - SharedAudioCore (library): YES")
-message(STATUS "  - Examples: ${BUILD_EXAMPLES}")
-message(STATUS "  - Tests: ${BUILD_TESTS}")
-message(STATUS "  - Electron Binding: ${BUILD_ELECTRON_BINDING}")
-message(STATUS "")
-if(WIN32)
-    message(STATUS "Windows-specific:")
-    message(STATUS "  - Using vcpkg toolchain: ${VCPKG_TOOLCHAIN}")
-    message(STATUS "  - Target Architecture: ${CMAKE_GENERATOR_PLATFORM}")
-endif()
-message(STATUS "==========================================")
-
-# =============================================
-# TROUBLESHOOTING INFORMATION
-# =============================================
-
-if(NOT PORTAUDIO_FOUND)
-    message(STATUS "")
-    message(STATUS "🔧 TROUBLESHOOTING PORTAUDIO:")
-    message(STATUS "If PortAudio is not found, try:")
-    if(WIN32)
-        message(STATUS "  1. Install via vcpkg: 'C:/vcpkg/vcpkg install portaudio:x64-windows'")
-        message(STATUS "  2. Use vcpkg toolchain: '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'")
-        message(STATUS "  3. Check vcpkg integration: 'C:/vcpkg/vcpkg integrate install'")
-    else()
-        message(STATUS "  1. Install portaudio dev package: 'sudo apt install libportaudio2 libportaudio-dev'")
-        message(STATUS "  2. Install pkg-config: 'sudo apt install pkg-config'")
-    endif()
-    message(STATUS "==========================================")
-endif()
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/SharedAudioCore.pc"
+    DESTINATION lib/pkgconfig
+)

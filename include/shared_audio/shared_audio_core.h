@@ -5,15 +5,6 @@
 #include <string>
 #include <functional>
 
-struct HardwareCapabilities {
-    bool supports_asio;
-    bool supports_low_latency;
-    int max_channels;
-    int min_buffer_size;
-    std::vector<int> supported_sample_rates;
-    double min_latency_ms;
-};
-
 namespace SharedAudio {
 
     // Forward declarations
@@ -79,6 +70,9 @@ namespace SharedAudio {
         int buffer_overruns;
         bool is_stable;
     };
+
+    // Forward declaration of HardwareCapabilities (defined in hardware_detector.h)
+    struct HardwareCapabilities;
 
     // Main shared audio core class
     class SharedAudioCore {

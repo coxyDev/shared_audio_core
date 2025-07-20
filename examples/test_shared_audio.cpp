@@ -1,6 +1,7 @@
 ﻿#include "shared_audio/shared_audio_core.h"
-#include "show_control/cue_audio_manager.h"
-#include "show_control/crossfade_engine.h"
+#include "hardware/hardware_detector.h"  // Add this for hardware functions
+#include "show_control/cue_audio_manager.h"  // Add this for complete type
+#include "show_control/crossfade_engine.h"   // Add this for complete type
 #include <iostream>
 #include <vector>
 #include <chrono>

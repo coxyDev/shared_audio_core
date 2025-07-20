@@ -26,14 +26,21 @@ namespace SharedAudio {
         std::vector<int> supported_buffer_sizes;
     };
 
-    // Hardware detection functions
+    // Core hardware detection functions
     std::vector<HardwareType> detect_professional_hardware();
+    std::vector<AudioDeviceInfo> get_available_devices();
+    HardwareType detect_hardware_type(const std::string& device_name);
+    bool is_professional_hardware_available();
+    bool is_professional_latency_capable(HardwareType type);
+    std::string hardware_type_to_string(HardwareType type);
     HardwareCapabilities get_hardware_capabilities(HardwareType type);
+
+    // Additional utility functions
     bool is_hardware_asio_capable(const std::string& device_name);
     double get_hardware_minimum_latency(HardwareType type);
     AudioSettings optimize_settings_for_hardware(HardwareType type);
 
-    // Platform-specific detection
+    // Platform-specific detection (declarations only)
 #ifdef _WIN32
     void detect_windows_asio_hardware(std::vector<HardwareType>& detected);
     std::vector<std::string> get_installed_asio_drivers();
@@ -59,25 +66,15 @@ namespace SharedAudio {
         bool initialization_success;
         double measured_latency_ms;
         double cpu_usage_percent;
-        int max_stable_channels;
+        int buffer_underruns;
+        int buffer_overruns;
         bool supports_target_latency;
         std::string error_message;
     };
 
+    // Hardware testing functions (declarations only - implementations can be added later)
     HardwareTestResult test_hardware_performance(HardwareType type, const AudioSettings& settings);
     std::vector<HardwareTestResult> benchmark_all_hardware();
-
-    // Hardware-specific optimizations
-    AudioSettings get_recommended_settings(HardwareType type, bool prioritize_latency = true);
-    void apply_hardware_specific_optimizations(HardwareType type);
-
-    // Professional hardware profiles
-    namespace HardwareProfiles {
-        AudioSettings get_broadcast_profile(HardwareType type);     // For radio/TV broadcast
-        AudioSettings get_live_sound_profile(HardwareType type);    // For live performance
-        AudioSettings get_recording_profile(HardwareType type);     // For studio recording
-        AudioSettings get_post_production_profile(HardwareType type); // For post-production
-        AudioSettings get_gaming_profile(HardwareType type);        // For low-latency gaming
-    }
+    bool validate_hardware_configuration(const AudioSettings& settings);
 
 } // namespace SharedAudio

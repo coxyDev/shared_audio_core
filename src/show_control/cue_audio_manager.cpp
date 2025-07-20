@@ -329,4 +329,41 @@ namespace SharedAudio {
         return impl_->is_cue_loaded(cue_id);
     }
 
+    bool CueAudioManager::start_cue_realtime(const char* cue_id) {
+        // This is called from audio thread - NO LOCKS!
+        auto* cue = find_cue_lockfree(cue_id);
+        if (cue) {
+            cue->start_realtime();
+            return true;
+        }
+        return false;
+    }
+
+    bool CueAudioManager::stop_cue_realtime(const char* cue_id) {
+        // This is called from audio thread - NO LOCKS!
+        auto* cue = find_cue_lockfree(cue_id);
+        if (cue) {
+            cue->stop_realtime();
+            return true;
+        }
+        return false;
+    }
+
+    // Non-realtime thread methods send messages
+    bool CueAudioManager::start_cue(const std::string& cue_id) {
+        AudioThreadMessage msg;
+        msg.type = AudioThreadMessage::START_CUE;
+        strncpy(msg.cue_id, cue_id.c_str(), sizeof(msg.cue_id) - 1);
+
+        return parent_core_->sendAudioThreadMessage(msg);
+    }
+
+    bool CueAudioManager::stop_cue(const std::string& cue_id) {
+        AudioThreadMessage msg;
+        msg.type = AudioThreadMessage::STOP_CUE;
+        strncpy(msg.cue_id, cue_id.c_str(), sizeof(msg.cue_id) - 1);
+
+        return parent_core_->sendAudioThreadMessage(msg);
+    }
+
 }
